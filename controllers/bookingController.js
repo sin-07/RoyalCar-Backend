@@ -1,0 +1,188 @@
+// 📁 controllers/bookingController.js
+
+import Booking from "../models/Booking.js";
+import Car from "../models/Car.js";
+
+// ✅ Check car availability
+// 📁 controllers/bookingController.js
+
+export const checkAvailabilityOfCar = async (req, res) => {
+  try {
+    const { pickupDateTime, returnDateTime } = req.body;
+
+    const pickup = new Date(pickupDateTime);
+    const ret = new Date(returnDateTime);
+
+    if (!pickup || !ret || ret <= pickup) {
+      return res.json({
+        success: false,
+        message: "Invalid pickup or return time.",
+      });
+    }
+
+    const cars = await Car.find({ isAvailable: true });
+    const availableCars = [];
+
+    for (const car of cars) {
+      // Only check confirmed bookings for availability
+      const bookings = await Booking.find({ 
+        car: car._id, 
+        status: "confirmed" 
+      });
+
+      let available = true;
+      let nextAvailableDate = null;
+
+      for (const booking of bookings) {
+        const bookedStart = new Date(`${booking.pickupDate}T${booking.pickupTime}`);
+        const bookedEnd = new Date(`${booking.returnDate}T${booking.returnTime}`);
+
+        // Overlaps?
+        if (pickup < bookedEnd && ret > bookedStart) {
+          available = false;
+          if (!nextAvailableDate || bookedEnd > new Date(nextAvailableDate)) {
+            nextAvailableDate = bookedEnd;
+          }
+        }
+      }
+
+      availableCars.push({
+        car,
+        available,
+        availableAt: nextAvailableDate,
+      });
+    }
+
+    return res.json({ success: true, cars: availableCars });
+  } catch (err) {
+    console.error("checkAvailabilityOfCar error:", err);
+    return res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+
+// ✅ Create booking
+export const createBooking = async (req, res) => {
+  try {
+    const { pickupDateTime, returnDateTime, car } = req.body;
+
+    const pickup = new Date(pickupDateTime);
+    const ret = new Date(returnDateTime);
+    const now = new Date();
+
+    const durationMs = ret - pickup;
+    const durationMins = durationMs / (1000 * 60);
+    const hoursToPickup = (pickup - now) / (1000 * 60 * 60);
+
+    if (hoursToPickup < 24) {
+      return res.json({
+        success: false,
+        message: "Pickup must be at least 24 hours from now.",
+      });
+    }
+
+    if (durationMins < 1440) {
+      return res.json({
+        success: false,
+        message: "Booking must be at least 24 hours long.",
+      });
+    }
+
+    // Only check for conflicts with confirmed bookings
+    const existing = await Booking.find({ 
+      car, 
+      status: "confirmed" 
+    });
+    const isConflict = existing.some((b) => {
+      const bStart = new Date(`${b.pickupDate}T${b.pickupTime}`);
+      const bEnd = new Date(`${b.returnDate}T${b.returnTime}`);
+      return pickup < bEnd && ret > bStart;
+    });
+
+    if (isConflict) {
+      return res.json({
+        success: false,
+        message: "Car is already booked during this time.",
+      });
+    }
+
+    const carData = await Car.findById(car);
+    const pricePerDay = carData.pricePerDay;
+    const durationDays = Math.ceil(durationMins / 1440);
+    const totalPrice = durationDays * pricePerDay;
+
+    const booking = await Booking.create({
+      user: req.user._id,
+      car,
+      owner: carData.owner,
+      pickupDate: pickupDateTime.split("T")[0],
+      pickupTime: pickupDateTime.split("T")[1],
+      returnDate: returnDateTime.split("T")[0],
+      returnTime: returnDateTime.split("T")[1],
+      price: totalPrice,
+      status: "pending",
+    });
+
+    return res.json({ success: true, bookingId: booking._id });
+  } catch (err) {
+    console.error("createBooking error:", err);
+    return res.status(500).json({ success: false, message: "Booking error" });
+  }
+};
+
+// ✅ Get user bookings
+export const getUserBookings = async (req, res) => {
+  try {
+    const bookings = await Booking.find({ user: req.user._id })
+      .populate("car")
+      .sort({ createdAt: -1 });
+
+    return res.json({ success: true, bookings });
+  } catch (err) {
+    console.error("getUserBookings error:", err);
+    return res.json({ success: false, message: err.message });
+  }
+};
+
+// ✅ Get owner bookings
+export const getOwnerBookings = async (req, res) => {
+  try {
+    if (req.user.role !== "owner") {
+      return res.json({ success: false, message: "Unauthorized" });
+    }
+
+    const bookings = await Booking.find({ owner: req.user._id })
+      .populate("car user")
+      .select("-user.password")
+      .sort({ createdAt: -1 });
+
+    return res.json({ success: true, bookings });
+  } catch (err) {
+    console.error("getOwnerBookings error:", err);
+    return res.json({ success: false, message: err.message });
+  }
+};
+
+// ✅ Export booking status changer
+
+export const changeBookingStatus = async (req, res) => {
+  try {
+    const { bookingId, status } = req.body;
+
+    const booking = await Booking.findById(bookingId);
+    if (!booking || booking.owner.toString() !== req.user._id.toString()) {
+      return res.json({
+        success: false,
+        message: "Unauthorized or booking not found.",
+      });
+    }
+
+    booking.status = status;
+    await booking.save();
+
+    return res.json({ success: true, message: "Status updated." });
+  } catch (err) {
+    console.error("changeBookingStatus error:", err);
+    return res.json({ success: false, message: err.message });
+  }
+};
