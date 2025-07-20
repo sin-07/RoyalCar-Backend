@@ -723,8 +723,11 @@ export const adminLogin = async (req, res) => {
 // Get User data
 export const getUserData = async (req, res) => {
   try {
-    const { userId } = req.body;
-    const user = await User.findById(userId).select("-password");
+    // Use the user from auth middleware instead of userId from body
+    const user = req.user;
+    if (!user) {
+      return res.json({ success: false, message: "User not found" });
+    }
     res.json({ success: true, user });
   } catch (error) {
     console.log(error.message);
