@@ -14,7 +14,16 @@ const app = express()
 await connectDB()
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: [
+    'http://localhost:5173', // Local development
+    'http://localhost:3000', // Local development alternative
+    'https://yourfrontenddomain.com', // Replace with your actual frontend domain
+    'https://royal-car-co-in.vercel.app', // If you deploy to Vercel
+    'https://royalcar-frontend.netlify.app' // If you deploy to Netlify
+  ],
+  credentials: true
+}));
 app.use(express.json());
 
 app.get('/', (req, res) => res.send("Server is running"))
