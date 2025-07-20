@@ -15,17 +15,18 @@ await connectDB()
 
 // Middleware
 app.use(cors({
-  origin: [
-    'http://localhost:5173', // Local development
-    'http://localhost:3000', // Local development alternative
-    'https://royaalcar.netlify.app', // Your Netlify frontend
-    'https://royal-car-co-in.vercel.app', // If you deploy to Vercel
-    'https://royalcar-frontend.netlify.app' // Alternative Netlify URL
-  ],
+  origin: '*', // Allow all origins temporarily for debugging
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
+
+// Add debugging middleware
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.path} - Origin: ${req.headers.origin}`);
+  next();
+});
+
 app.use(express.json());
 
 app.get('/', (req, res) => res.send("Server is running"))
