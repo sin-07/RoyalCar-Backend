@@ -18,9 +18,9 @@ app.use(cors({
   origin: [
     'http://localhost:5173', // Local development
     'http://localhost:3000', // Local development alternative
-    'https://yourfrontenddomain.com', // Replace with your actual frontend domain
+    'https://royaalcar.netlify.app', // Your Netlify frontend
     'https://royal-car-co-in.vercel.app', // If you deploy to Vercel
-    'https://royalcar-frontend.netlify.app' // If you deploy to Netlify
+    'https://royalcar-frontend.netlify.app' // Alternative Netlify URL
   ],
   credentials: true
 }));
