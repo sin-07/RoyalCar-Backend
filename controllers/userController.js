@@ -55,13 +55,13 @@ export const testConfig = async (req, res) => {
 export const testEmail = async (req, res) => {
   try {
     const { email } = req.body;
-    
+
     if (!email) {
-      return res.json({ success: false, message: 'Email is required' });
+      return res.json({ success: false, message: "Email is required" });
     }
 
     const testOtp = "123456";
-    
+
     const mailOptions = {
       from: process.env.MAIL_USER,
       to: email,
@@ -101,15 +101,14 @@ export const testEmail = async (req, res) => {
     };
 
     await transporter.sendMail(mailOptions);
-    
+
     res.json({
       success: true,
-      message: 'Test email sent successfully'
+      message: "Test email sent successfully",
     });
-    
   } catch (error) {
-    console.log('Test Email Error:', error.message);
-    res.json({ success: false, message: 'Failed to send test email' });
+    console.log("Test Email Error:", error.message);
+    res.json({ success: false, message: "Failed to send test email" });
   }
 };
 
@@ -208,7 +207,10 @@ export const sendOtp = async (req, res) => {
     };
 
     console.log("Attempting to send email to:", email);
-    console.log("Email template being used:", mailOptions.html.substring(0, 200) + "...");
+    console.log(
+      "Email template being used:",
+      mailOptions.html.substring(0, 200) + "..."
+    );
     await transporter.sendMail(mailOptions);
     console.log("Email sent successfully to:", email);
 
@@ -340,7 +342,7 @@ export const sendPasswordResetOtp = async (req, res) => {
                         
                         <p style="color: #4b5563; font-size: 16px; line-height: 1.6;">Hello,</p>
                         <p style="color: #4b5563; font-size: 16px; line-height: 1.6;">
-                            We received a request to reset your password for your Royal Car Rental account. Use the following verification code to proceed:
+                            We received a request to reset your password for your Royal Cars account. Use the following verification code to proceed:
                         </p>
                         
                         <div style="background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); padding: 30px; border-radius: 12px; text-align: center; margin: 25px 0; border: 2px solid #bbf7d0;">
@@ -364,7 +366,7 @@ export const sendPasswordResetOtp = async (req, res) => {
                                 <strong style="color: #2563eb;">Royal Cars</strong>
                             </p>
                             <p style="color: #9ca3af; margin: 10px 0 0 0; font-size: 12px;">
-                                Drive in luxury, travel with confidence 🚗✨
+                                Drive in luxury, travel with confidence
                             </p>
                         </div>
                     </div>
@@ -393,6 +395,80 @@ export const sendPasswordResetOtp = async (req, res) => {
   }
 };
 
+// Verify Password Reset OTP (without resetting password)
+export const verifyPasswordResetOtp = async (req, res) => {
+  try {
+    console.log("Verify Password Reset OTP request received:", req.body);
+    const { email, otp } = req.body;
+
+    if (!email || !otp) {
+      console.log("Missing email or OTP:", { email: !!email, otp: !!otp });
+      return res.json({
+        success: false,
+        message: "Email and OTP are required",
+      });
+    }
+
+    console.log("Looking for stored OTP data for email:", email);
+    const storedOtpData = passwordResetOtpStore.get(email);
+    console.log("Stored OTP data:", storedOtpData ? { 
+      hasOtp: !!storedOtpData.otp, 
+      expiresAt: new Date(storedOtpData.expiresAt),
+      attempts: storedOtpData.attempts,
+      currentTime: new Date()
+    } : "No data found");
+
+    if (!storedOtpData) {
+      console.log("No OTP data found for email:", email);
+      return res.json({
+        success: false,
+        message: "OTP not found or expired. Please request a new password reset.",
+      });
+    }
+
+    // Check if OTP is expired
+    if (Date.now() > storedOtpData.expiresAt) {
+      console.log("OTP expired for email:", email);
+      passwordResetOtpStore.delete(email);
+      return res.json({
+        success: false,
+        message: "OTP has expired. Please request a new password reset.",
+      });
+    }
+
+    // Check attempts (max 3 attempts)
+    if (storedOtpData.attempts >= 3) {
+      console.log("Too many attempts for email:", email);
+      passwordResetOtpStore.delete(email);
+      return res.json({
+        success: false,
+        message: "Too many failed attempts. Please request a new password reset.",
+      });
+    }
+
+    // Verify OTP
+    console.log("Comparing OTPs - Received:", otp, "Stored:", storedOtpData.otp);
+    if (storedOtpData.otp !== otp) {
+      storedOtpData.attempts += 1;
+      console.log("OTP mismatch. Attempts now:", storedOtpData.attempts);
+      return res.json({ success: false, message: "Invalid OTP" });
+    }
+
+    console.log("OTP verified successfully for email:", email);
+    // OTP is valid, but don't delete it yet (we'll need it for password reset)
+    res.json({
+      success: true,
+      message: "OTP verified successfully",
+    });
+  } catch (error) {
+    console.log("Verify Password Reset OTP Error:", error.message);
+    res.json({
+      success: false,
+      message: "OTP verification failed. Please try again.",
+    });
+  }
+};
+
 // Reset Password
 export const resetPassword = async (req, res) => {
   try {
@@ -415,18 +491,19 @@ export const resetPassword = async (req, res) => {
     const storedOtpData = passwordResetOtpStore.get(email);
 
     if (!storedOtpData) {
-      return res.json({ 
-        success: false, 
-        message: "OTP not found or expired. Please request a new password reset." 
+      return res.json({
+        success: false,
+        message:
+          "OTP not found or expired. Please request a new password reset.",
       });
     }
 
     // Check if OTP is expired
     if (Date.now() > storedOtpData.expiresAt) {
       passwordResetOtpStore.delete(email);
-      return res.json({ 
-        success: false, 
-        message: "OTP has expired. Please request a new password reset." 
+      return res.json({
+        success: false,
+        message: "OTP has expired. Please request a new password reset.",
       });
     }
 
@@ -435,7 +512,8 @@ export const resetPassword = async (req, res) => {
       passwordResetOtpStore.delete(email);
       return res.json({
         success: false,
-        message: "Too many failed attempts. Please request a new password reset.",
+        message:
+          "Too many failed attempts. Please request a new password reset.",
       });
     }
 
@@ -465,13 +543,14 @@ export const resetPassword = async (req, res) => {
 
     res.json({
       success: true,
-      message: "Password reset successfully. You can now login with your new password.",
+      message:
+        "Password reset successfully. You can now login with your new password.",
     });
   } catch (error) {
     console.log("Reset Password Error:", error.message);
-    res.json({ 
-      success: false, 
-      message: "Password reset failed. Please try again." 
+    res.json({
+      success: false,
+      message: "Password reset failed. Please try again.",
     });
   }
 };
