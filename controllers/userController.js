@@ -23,6 +23,7 @@ const transporter = nodemailer.createTransport({
 // Store OTPs temporarily (in production, use Redis or database)
 const otpStore = new Map();
 const passwordResetOtpStore = new Map();
+const verifiedPasswordResetStore = new Map();
 
 // Test endpoint to check environment variables
 export const testConfig = async (req, res) => {
@@ -51,6 +52,7 @@ export const testConfig = async (req, res) => {
   }
 };
 
+
 // Test email endpoint to check email template
 export const testEmail = async (req, res) => {
   try {
@@ -70,6 +72,7 @@ export const testEmail = async (req, res) => {
                 <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8f9fa;">
                     <div style="background-color: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
                         <div style="text-align: center; margin-bottom: 30px;">
+                            <img src="https://i.ibb.co/9ZQJYqY/Royal-Cars.png" alt="Royal Cars" style="width: 80px; height: auto; margin-bottom: 15px;">
                             <h1 style="color: #2563eb; margin: 0; font-size: 28px; font-weight: bold;">Royal Cars</h1>
                             <div style="width: 50px; height: 3px; background: linear-gradient(to right, #2563eb, #3b82f6); margin: 10px auto;"></div>
                         </div>
@@ -115,31 +118,23 @@ export const testEmail = async (req, res) => {
 // Send OTP
 export const sendOtp = async (req, res) => {
   try {
-    console.log("Send OTP request received:", req.body);
     const { email } = req.body;
 
     if (!email) {
-      console.log("Error: Email is required");
       return res.json({ success: false, message: "Email is required" });
     }
 
     // Check if email environment variables are set
     if (!process.env.MAIL_USER || !process.env.MAIL_PASS) {
-      console.log("Email configuration missing:", {
-        hasEmailUser: !!process.env.MAIL_USER,
-        hasEmailPass: !!process.env.MAIL_PASS,
-      });
       return res.json({
         success: false,
         message: "Email service not configured",
       });
     }
 
-    console.log("Checking if user exists for email:", email);
     // Check if user already exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
-      console.log("User already exists:", email);
       return res.json({
         success: false,
         message: "User already exists with this email",
@@ -166,6 +161,7 @@ export const sendOtp = async (req, res) => {
                 <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8f9fa;">
                     <div style="background-color: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
                         <div style="text-align: center; margin-bottom: 30px;">
+                            <img src="https://i.ibb.co/9ZQJYqY/Royal-Cars.png" alt="Royal Cars" style="width: 80px; height: auto; margin-bottom: 15px;">
                             <h1 style="color: #2563eb; margin: 0; font-size: 28px; font-weight: bold;">Royal Cars</h1>
                             <div style="width: 50px; height: 3px; background: linear-gradient(to right, #2563eb, #3b82f6); margin: 10px auto;"></div>
                         </div>
@@ -334,6 +330,7 @@ export const sendPasswordResetOtp = async (req, res) => {
                 <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8f9fa;">
                     <div style="background-color: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
                         <div style="text-align: center; margin-bottom: 30px;">
+                            <img src="https://i.ibb.co/9ZQJYqY/Royal-Cars.png" alt="Royal Cars" style="width: 80px; height: auto; margin-bottom: 15px;">
                             <h1 style="color: #2563eb; margin: 0; font-size: 28px; font-weight: bold;">Royal Cars</h1>
                             <div style="width: 50px; height: 3px; background: linear-gradient(to right, #2563eb, #3b82f6); margin: 10px auto;"></div>
                         </div>
@@ -455,10 +452,25 @@ export const verifyPasswordResetOtp = async (req, res) => {
     }
 
     console.log("OTP verified successfully for email:", email);
-    // OTP is valid, but don't delete it yet (we'll need it for password reset)
+    
+    // Generate a verification token for password reset
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    console.log("Generated verification token for:", email);
+    
+    // Store verification token (valid for 15 minutes)
+    verifiedPasswordResetStore.set(email, {
+      token: verificationToken,
+      expiresAt: Date.now() + 15 * 60 * 1000, // 15 minutes
+    });
+    
+    // Remove the OTP since it's now verified
+    passwordResetOtpStore.delete(email);
+    console.log("OTP removed from store, verification token stored for:", email);
+    
     res.json({
       success: true,
       message: "OTP verified successfully",
+      verificationToken, // Send token to frontend
     });
   } catch (error) {
     console.log("Verify Password Reset OTP Error:", error.message);
@@ -472,82 +484,106 @@ export const verifyPasswordResetOtp = async (req, res) => {
 // Reset Password
 export const resetPassword = async (req, res) => {
   try {
-    const { email, otp, newPassword } = req.body;
+    console.log("Reset Password request received:", req.body);
+    console.log("Request body keys:", Object.keys(req.body));
+    console.log("Verification token received:", req.body.verificationToken);
+    console.log("Current verifiedPasswordResetStore contents:", Array.from(verifiedPasswordResetStore.entries()));
+    
+    const { email, verificationToken, newPassword } = req.body;
 
-    if (!email || !otp || !newPassword) {
+    if (!email || !verificationToken || !newPassword) {
+      console.log("Missing required fields:", { 
+        email: !!email, 
+        verificationToken: !!verificationToken, 
+        newPassword: !!newPassword,
+        emailValue: email,
+        tokenValue: verificationToken ? verificationToken.substring(0, 10) + "..." : "undefined"
+      });
       return res.json({
         success: false,
-        message: "Email, OTP, and new password are required",
+        message: "Email, verification token, and new password are required",
       });
     }
 
     if (newPassword.length < 6) {
+      console.log("Password too short:", newPassword.length);
       return res.json({
         success: false,
         message: "Password must be at least 6 characters long",
       });
     }
 
-    const storedOtpData = passwordResetOtpStore.get(email);
+    console.log("Looking for verification token for password reset:", email);
+    const verificationData = verifiedPasswordResetStore.get(email);
+    console.log("Verification data:", verificationData ? { 
+      hasToken: !!verificationData.token, 
+      expiresAt: new Date(verificationData.expiresAt),
+      currentTime: new Date()
+    } : "No data found");
 
-    if (!storedOtpData) {
+    if (!verificationData) {
+      console.log("No verification data found for email:", email);
       return res.json({
         success: false,
-        message:
-          "OTP not found or expired. Please request a new password reset.",
+        message: "Verification token not found or expired. Please verify OTP again.",
       });
     }
 
-    // Check if OTP is expired
-    if (Date.now() > storedOtpData.expiresAt) {
-      passwordResetOtpStore.delete(email);
+    // Check if verification token is expired
+    if (Date.now() > verificationData.expiresAt) {
+      console.log("Verification token expired for email:", email);
+      verifiedPasswordResetStore.delete(email);
       return res.json({
         success: false,
-        message: "OTP has expired. Please request a new password reset.",
+        message: "Verification token has expired. Please verify OTP again.",
       });
     }
 
-    // Check attempts (max 3 attempts)
-    if (storedOtpData.attempts >= 3) {
-      passwordResetOtpStore.delete(email);
-      return res.json({
-        success: false,
-        message:
-          "Too many failed attempts. Please request a new password reset.",
-      });
+    // Verify token
+    console.log("Comparing verification tokens - Received:", verificationToken, "Stored:", verificationData.token);
+    if (verificationData.token !== verificationToken) {
+      console.log("Verification token mismatch for email:", email);
+      return res.json({ success: false, message: "Invalid verification token" });
     }
 
-    // Verify OTP
-    if (storedOtpData.otp !== otp) {
-      storedOtpData.attempts += 1;
-      return res.json({ success: false, message: "Invalid OTP" });
-    }
-
+    console.log("Finding user for password reset:", email);
     // Find user and update password
     const user = await User.findOne({ email });
     if (!user) {
-      passwordResetOtpStore.delete(email);
+      console.log("User not found for password reset:", email);
+      verifiedPasswordResetStore.delete(email);
       return res.json({
         success: false,
         message: "User not found",
       });
     }
 
-    // Hash new password and update
+    console.log("Hashing new password and updating user:", email);
+    // Hash new password and update using findOneAndUpdate to avoid validation issues
     const hashedPassword = await bcrypt.hash(newPassword, 10);
-    user.password = hashedPassword;
-    await user.save();
+    
+    await User.findOneAndUpdate(
+      { email },
+      { $set: { password: hashedPassword } },
+      { runValidators: false } // Skip validation to avoid issues with existing incomplete records
+    );
+    
+    console.log("Password updated successfully for user:", email);
 
-    // Remove OTP from store
-    passwordResetOtpStore.delete(email);
+    // Remove verification token from store
+    verifiedPasswordResetStore.delete(email);
+    console.log("Verification token removed from store for:", email);
 
     res.json({
       success: true,
-      message:
-        "Password reset successfully. You can now login with your new password.",
+      message: "Password reset successfully. You can now login with your new password.",
     });
   } catch (error) {
-    console.log("Reset Password Error:", error.message);
+    console.log("Reset Password Error Details:", {
+      message: error.message,
+      stack: error.stack,
+      email: req.body?.email
+    });
     res.json({
       success: false,
       message: "Password reset failed. Please try again.",
