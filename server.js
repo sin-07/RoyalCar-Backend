@@ -22,7 +22,9 @@ app.use(cors({
     'https://royal-car-co-in.vercel.app', // If you deploy to Vercel
     'https://royalcar-frontend.netlify.app' // Alternative Netlify URL
   ],
-  credentials: true
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 app.use(express.json());
 
