@@ -5,7 +5,6 @@ import Car from "../models/Car.js";
 import nodemailer from 'nodemailer';
 import crypto from 'crypto';
 
-
 // Generate JWT Token
 const generateToken = (userId)=>{
     const payload = userId;
@@ -14,33 +13,68 @@ const generateToken = (userId)=>{
 
 // Email configuration
 const transporter = nodemailer.createTransport({
-    service: 'gmail', // You can use other services like 'outlook', 'yahoo', etc.
+    service: 'gmail',
     auth: {
-        user: process.env.EMAIL_USER, // Your email
-        pass: process.env.EMAIL_PASS, // Your email password or app password
+        user: process.env.MAIL_USER,
+        pass: process.env.MAIL_PASS,
     },
 });
 
 // Store OTPs temporarily (in production, use Redis or database)
 const otpStore = new Map();
 
+// Test endpoint to check environment variables
+export const testConfig = async (req, res) => {
+    try {
+        const hasEmailUser = !!process.env.MAIL_USER;
+        const hasEmailPass = !!process.env.MAIL_PASS;
+        const emailUser = process.env.MAIL_USER ? process.env.MAIL_USER.substring(0, 3) + '***' : 'NOT_SET';
+        
+        res.json({ 
+            success: true, 
+            message: 'Config check',
+            config: {
+                hasEmailUser,
+                hasEmailPass,
+                emailUser
+            }
+        });
+    } catch (error) {
+        res.json({ success: false, message: 'Config check failed', error: error.message });
+    }
+};
+
 // Send OTP
 export const sendOtp = async (req, res) => {
     try {
+        console.log('Send OTP request received:', req.body);
         const { email } = req.body;
 
         if (!email) {
+            console.log('Error: Email is required');
             return res.json({ success: false, message: 'Email is required' });
         }
 
+        // Check if email environment variables are set
+        if (!process.env.MAIL_USER || !process.env.MAIL_PASS) {
+            console.log('Email configuration missing:', {
+                hasEmailUser: !!process.env.MAIL_USER,
+                hasEmailPass: !!process.env.MAIL_PASS
+            });
+            return res.json({ success: false, message: 'Email service not configured' });
+        }
+
+        console.log('Checking if user exists for email:', email);
         // Check if user already exists
         const existingUser = await User.findOne({ email });
         if (existingUser) {
+            console.log('User already exists:', email);
             return res.json({ success: false, message: 'User already exists with this email' });
         }
 
         // Generate 6-digit OTP
         const otp = crypto.randomInt(100000, 999999).toString();
+        console.log('Generated OTP for', email, ':', otp);
         
         // Store OTP with expiration (5 minutes)
         otpStore.set(email, {
@@ -51,7 +85,7 @@ export const sendOtp = async (req, res) => {
 
         // Send OTP via email
         const mailOptions = {
-            from: process.env.EMAIL_USER,
+            from: process.env.MAIL_USER,
             to: email,
             subject: 'Email Verification - Royal Car Rental',
             html: `
@@ -71,7 +105,9 @@ export const sendOtp = async (req, res) => {
             `
         };
 
+        console.log('Attempting to send email to:', email);
         await transporter.sendMail(mailOptions);
+        console.log('Email sent successfully to:', email);
 
         res.json({ 
             success: true, 
@@ -79,7 +115,11 @@ export const sendOtp = async (req, res) => {
         });
 
     } catch (error) {
-        console.log(error.message);
+        console.log('Send OTP Error Details:', {
+            message: error.message,
+            stack: error.stack,
+            code: error.code
+        });
         res.json({ success: false, message: 'Failed to send OTP. Please try again.' });
     }
 };
@@ -184,66 +224,73 @@ export const registerUser = async (req, res)=>{
     }
 }
 
-// Login User 
+// Login User
 export const loginUser = async (req, res)=>{
     try {
         const {email, password} = req.body
+
         const user = await User.findOne({email})
         if(!user){
-            return res.json({success: false, message: "User not found" })
+            return res.json({success: false, message: 'Invalid email or password'})
         }
+
         const isMatch = await bcrypt.compare(password, user.password)
         if(!isMatch){
-            return res.json({success: false, message: "Invalid Credentials" })
+            return res.json({success: false, message: 'Invalid email or password'})
         }
+
         const token = generateToken(user._id.toString())
         res.json({success: true, token})
+
     } catch (error) {
         console.log(error.message);
         res.json({success: false, message: error.message})
     }
 }
 
-// Admin Login 
+// Admin Login
 export const adminLogin = async (req, res) => {
     try {
         const { email, password } = req.body;
-        
-        // Check if admin credentials match
+
+        // Check for admin credentials
         if (email === "aniket.singh9322@gmail.com" && password === "Vicky@123") {
-            // Check if admin user exists in database
-            let adminUser = await User.findOne({ email });
+            // Create a temporary admin user object for token generation
+            const adminId = "admin_" + Date.now(); // Temporary admin ID
+            const token = generateToken(adminId);
             
-            if (!adminUser) {
-                // Create admin user if doesn't exist
-                const hashedPassword = await bcrypt.hash(password, 10);
-                adminUser = await User.create({
-                    name: "Admin",
-                    email: email,
-                    password: hashedPassword,
-                    role: "owner"
-                });
-            } else {
-                // Update existing user to owner role
-                adminUser.role = "owner";
-                await adminUser.save();
-            }
-            
-            const token = generateToken(adminUser._id.toString());
-            res.json({ success: true, token, message: "Admin login successful" });
-        } else {
-            res.json({ success: false, message: "Invalid admin credentials" });
+            return res.json({
+                success: true, 
+                token,
+                message: 'Admin login successful'
+            });
         }
+
+        // If not admin credentials, try regular user login
+        const user = await User.findOne({ email });
+        if (!user) {
+            return res.json({ success: false, message: 'Invalid email or password' });
+        }
+
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) {
+            return res.json({ success: false, message: 'Invalid email or password' });
+        }
+
+        const token = generateToken(user._id.toString());
+        res.json({ success: true, token });
+
     } catch (error) {
         console.log(error.message);
         res.json({ success: false, message: error.message });
     }
 };
 
-// Get User data using Token (JWT)
-export const getUserData = async (req, res) =>{
+// Get User data
+export const getUserData = async (req, res)=>{
     try {
-        const {user} = req;
+        const {userId} = req.body
+        const user = await User.findById(userId).select('-password')
         res.json({success: true, user})
     } catch (error) {
         console.log(error.message);
@@ -251,14 +298,13 @@ export const getUserData = async (req, res) =>{
     }
 }
 
-// Get All Cars for the Frontend
-export const getCars = async (req, res) =>{
+// Get all cars
+export const getCars = async (req, res) => {
     try {
-        // Get only available cars to match Cars.jsx behavior
-        const cars = await Car.find({ isAvailable: true })
-        res.json({success: true, cars})
+      const cars = await Car.find();
+      res.json({ success: true, cars });
     } catch (error) {
-        console.log(error.message);
-        res.json({success: false, message: error.message})
+      console.log(error.message);
+      res.json({ success: false, message: error.message });
     }
-}
+  };
