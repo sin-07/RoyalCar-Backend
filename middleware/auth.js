@@ -28,6 +28,22 @@ export const protect = async (req, res, next)=>{
             return res.json({success: false, message: "Invalid token"})
         }
         
+        // Check if this is an admin token (starts with "admin_")
+        if(userId.toString().startsWith("admin_")){
+            // Create admin user object
+            const adminUser = {
+                _id: userId,
+                email: "aniket.singh9322@gmail.com",
+                role: "owner",
+                name: "Admin"
+            };
+            req.user = adminUser;
+            console.log("Auth middleware - Admin authenticated:", adminUser.email, "Role:", adminUser.role);
+            next();
+            return;
+        }
+        
+        // For regular users, find in database
         const user = await User.findById(userId).select("-password");
         
         if(!user){

@@ -39,9 +39,29 @@ export const addCar = async (req, res) => {
       ],
     });
 
+    let ownerId = _id;
+    
+    // For admin users with fake ID, find a real user to use as owner
+    if (_id.toString().startsWith("admin_")) {
+      // Find any user with owner role to use as the owner
+      const anyOwner = await User.findOne({ role: "owner" });
+      if (anyOwner) {
+        ownerId = anyOwner._id;
+      } else {
+        // If no owner found, create a default admin user in database
+        const adminUser = await User.create({
+          name: "System Admin",
+          email: "aniket.singh9322@gmail.com",
+          password: "$2b$10$placeholder", // placeholder password hash
+          role: "owner"
+        });
+        ownerId = adminUser._id;
+      }
+    }
+
     await Car.create({
       ...car,
-      owner: _id,
+      owner: ownerId,
       image: optimizedImageUrl,
       isAvailable: true,
     });
@@ -57,7 +77,16 @@ export const addCar = async (req, res) => {
 export const getOwnerCars = async (req, res) => {
   try {
     const { _id } = req.user;
-    const cars = await Car.find({ owner: _id });
+    
+    let cars;
+    if (_id.toString().startsWith("admin_")) {
+      // Admin can see all cars
+      cars = await Car.find({});
+    } else {
+      // Regular owner sees only their cars
+      cars = await Car.find({ owner: _id });
+    }
+    
     res.json({ success: true, cars });
   } catch (error) {
     console.log(error.message);
@@ -117,10 +146,22 @@ export const getDashboardData = async (req, res) => {
       return res.json({ success: false, message: "Unauthorized" });
     }
 
-    const cars = await Car.find({ owner: _id });
-    const bookings = await Booking.find({ owner: _id })
-      .populate("car")
-      .sort({ createdAt: -1 });
+    // Check if this is an admin user (fake admin ID starting with "admin_")
+    let cars, bookings;
+    
+    if (_id.toString().startsWith("admin_")) {
+      // Admin can see all cars and bookings
+      cars = await Car.find({});
+      bookings = await Booking.find({})
+        .populate("car")
+        .sort({ createdAt: -1 });
+    } else {
+      // Regular owner sees only their cars and bookings
+      cars = await Car.find({ owner: _id });
+      bookings = await Booking.find({ owner: _id })
+        .populate("car")
+        .sort({ createdAt: -1 });
+    }
 
     const pending = bookings.filter((b) => b.status === "pending");
     const confirmed = bookings.filter((b) => b.status === "confirmed");
