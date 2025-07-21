@@ -23,7 +23,7 @@ function parseTimeTo24Hour(timeStr) {
 // ✅ Create Razorpay Order
 export const createOrder = async (req, res) => {
   try {
-    const { bookingId, customer } = req.body;
+    const { bookingId, customer, testAmount } = req.body;
     const booking = await Booking.findById(bookingId).populate("car");
 
     if (!booking)
@@ -38,26 +38,34 @@ export const createOrder = async (req, res) => {
     booking.phone = customer.phone;
     booking.license = customer.license;
 
-    // Calculate hour difference
-    const pickupTime = new Date(
-      `${booking.pickupDate}T${timeTo24String(booking.pickupTime)}:00`
-    );
-    const returnTime = new Date(
-      `${booking.returnDate}T${timeTo24String(booking.returnTime)}:00`
-    );
+    let totalPrice;
 
-    const durationInHours = Math.ceil(
-      (returnTime - pickupTime) / (1000 * 60 * 60)
-    );
+    // Use test amount if provided, otherwise calculate from booking details
+    if (testAmount) {
+      totalPrice = testAmount / 100; // Convert paise to rupees for storing in booking
+      console.log(`🧪 Test Mode: Using test amount of ₹${totalPrice}`);
+    } else {
+      // Calculate hour difference
+      const pickupTime = new Date(
+        `${booking.pickupDate}T${timeTo24String(booking.pickupTime)}:00`
+      );
+      const returnTime = new Date(
+        `${booking.returnDate}T${timeTo24String(booking.returnTime)}:00`
+      );
 
-    const hourlyRate = booking.car.pricePerDay / 24;
-    const totalPrice = Math.ceil(hourlyRate * durationInHours);
+      const durationInHours = Math.ceil(
+        (returnTime - pickupTime) / (1000 * 60 * 60)
+      );
+
+      const hourlyRate = booking.car.pricePerDay / 24;
+      totalPrice = Math.ceil(hourlyRate * durationInHours);
+    }
 
     booking.price = totalPrice;
     await booking.save();
 
     const order = await razorpay.orders.create({
-      amount: totalPrice * 100, // convert to paise
+      amount: testAmount || (totalPrice * 100), // Use testAmount directly if provided, otherwise convert totalPrice to paise
       currency: "INR",
       receipt: `rc-${bookingId}`,
     });
@@ -86,27 +94,41 @@ export const saveTransaction = async (req, res) => {
       razorpay_order_id,
       razorpay_signature,
     } = req.body;
+    
+    console.log("💾 Saving transaction for booking:", bookingId);
+    
     const booking = await Booking.findById(bookingId).populate("car");
 
-    if (!booking)
+    if (!booking) {
+      console.error("❌ Booking not found:", bookingId);
       return res
         .status(404)
         .json({ success: false, message: "Booking not found" });
+    }
 
+    // Update booking with payment details
     booking.isPaid = true;
-    booking.status = "confirmed"; // Update status to confirmed after successful payment
+    booking.status = "confirmed";
     booking.paymentDetails = {
       razorpay_payment_id,
       razorpay_order_id,
       razorpay_signature,
+      paidAt: new Date()
     };
 
     await booking.save();
+    console.log("✅ Transaction saved successfully for booking:", bookingId);
 
-    await sendConfirmationEmail(booking);
-    res.json({ success: true });
+    // Send response immediately
+    res.json({ success: true, message: "Payment saved successfully" });
+
+    // Send email asynchronously (don't wait for it)
+    sendConfirmationEmail(booking).catch(emailError => {
+      console.error("📧 Email sending failed (but payment was saved):", emailError.message);
+    });
+
   } catch (err) {
-    console.error("Transaction saving failed:", err);
+    console.error("❌ Transaction saving failed:", err);
     res
       .status(500)
       .json({ success: false, message: "Failed to save transaction" });
