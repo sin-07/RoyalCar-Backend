@@ -1,10 +1,7 @@
 import Razorpay from "razorpay";
 import crypto from "crypto";
-import nodemailer from "nodemailer";
 import Booking from "../models/Booking.js";
-import PDFDocument from "pdfkit";
-import fs from "fs";
-import path from "path";
+import { sendConfirmationEmail } from '../services/emailService.js';
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY,
@@ -122,10 +119,25 @@ export const saveTransaction = async (req, res) => {
     // Send response immediately
     res.json({ success: true, message: "Payment saved successfully" });
 
-    // Send email asynchronously (don't wait for it)
-    sendConfirmationEmail(booking).catch(emailError => {
-      console.error("📧 Email sending failed (but payment was saved):", emailError.message);
+    // Send email asynchronously with detailed logging
+    console.log("📧 Attempting to send email to:", booking.email);
+    console.log("📧 Booking data for email:", {
+      id: booking._id,
+      customerName: `${booking.firstName} ${booking.lastName}`,
+      email: booking.email,
+      phone: booking.phone,
+      carDetails: booking.car ? `${booking.car.brand} ${booking.car.model}` : 'Car details missing'
     });
+    
+    sendConfirmationEmail(booking)
+      .then(() => {
+        console.log("✅ Email sent successfully to:", booking.email);
+      })
+      .catch(emailError => {
+        console.error("❌ Email sending failed:", emailError);
+        console.error("❌ Full error details:", emailError.message);
+        console.error("❌ Error stack:", emailError.stack);
+      });
 
   } catch (err) {
     console.error("❌ Transaction saving failed:", err);
@@ -169,128 +181,3 @@ export const webhook = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
-
-// ✅ Send PDF Receipt & Confirmation Email
-async function sendConfirmationEmail(booking) {
-  const { PassThrough } = await import("stream");
-  const QRCode = await import("qrcode");
-  const doc = new PDFDocument({ margin: 40 });
-  const stream = new PassThrough();
-
-  const pdfPromise = new Promise((resolve, reject) => {
-    const buffers = [];
-    stream.on("data", (data) => buffers.push(data));
-    stream.on("end", () => resolve(Buffer.concat(buffers)));
-    stream.on("error", reject);
-  });
-
-  doc.pipe(stream);
-
-  // Logo
-  const logoPath = path.resolve("assets/logo/Royal_Cars.png");
-  if (fs.existsSync(logoPath)) {
-    doc.image(logoPath, 40, 30, { width: 100 });
-  }
-
-  // Header
-  doc.fontSize(24).fillColor("black").text("Payment Receipt", 0, 100, {
-    align: "center",
-    underline: true,
-  });
-
-  doc.moveDown(2);
-
-  // Info Table
-  doc.fontSize(13);
-  const labelX = 50;
-  const valueX = 200;
-  const lineHeight = 24;
-  let y = doc.y;
-
-  const row = (label, value) => {
-    doc.fillColor("#444").font("Helvetica-Bold").text(label, labelX, y);
-    doc
-      .fillColor("black")
-      .font("Helvetica")
-      .text(value || "N/A", valueX, y);
-    y += lineHeight;
-  };
-
-  row("Name:", `${booking.firstName} ${booking.lastName}`);
-  row("Email:", booking.email);
-  row("Phone:", booking.phone);
-  row("Booking ID:", booking._id.toString());
-  row("Car ID:", `${booking.car?.brand} ${booking.car?.model}`);
-  row("Pickup Date:", new Date(booking.pickupDate).toLocaleString());
-  row("Return Date:", new Date(booking.returnDate).toLocaleString());
-  row("Amount Paid:", `₹${booking.price}`);
-
-  doc.moveDown(2);
-  doc
-    .fontSize(12)
-    .fillColor("black")
-    .text("Thank you for booking with Royal Cars!", {
-      align: "center",
-    });
-
-  doc.moveDown(4);
-  doc
-    .fillColor("gray")
-    .fontSize(12)
-    .text("Authorized Signature", { align: "right" });
-
-  // QR Code
-  const qrData = `https://royalcars.co.in/support?booking=${booking._id}`;
-  const qrImage = await QRCode.toDataURL(qrData);
-  doc.image(qrImage, doc.page.width - 130, y, { width: 80 });
-
-  doc.moveDown(2);
-  doc
-    .fontSize(10)
-    .fillColor("gray")
-    .text("Need help? support@royalcars.com | +91-99999-99999", {
-      align: "center",
-    });
-
-  const year = new Date().getFullYear();
-  doc
-    .fontSize(10)
-    .fillColor("gray")
-    .text(`© ${year} Royal Cars. All rights reserved.`, { align: "center" });
-
-  doc.end();
-  const pdfBuffer = await pdfPromise;
-
-  const transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-      user: process.env.MAIL_USER,
-      pass: process.env.MAIL_PASS,
-    },
-  });
-
-  const mailOptions = {
-    from: "Royal Cars <no-reply@royalcars.com>",
-    to: booking.email,
-    subject: "Payment Confirmation - Royal Cars",
-    html: `
-      <h2>Thank you, ${booking.firstName}!</h2>
-      <p>Your payment of ₹${booking.price} has been successfully received.</p>
-      <p>Please find the receipt attached.</p>
-    `,
-    attachments: [
-      {
-        filename: `receipt-${booking._id}.pdf`,
-        content: pdfBuffer,
-        contentType: "application/pdf",
-      },
-    ],
-  };
-
-  try {
-    await transporter.sendMail(mailOptions);
-    console.log("✅ Email sent");
-  } catch (err) {
-    console.error("❌ Email error:", err);
-  }
-}

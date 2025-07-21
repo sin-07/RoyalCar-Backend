@@ -6,6 +6,7 @@ import {
   createBooking,
   getUserBookings,
   getOwnerBookings,
+  getBookingById,
   changeBookingStatus, // ✅ NOW properly exported
 } from "../controllers/bookingController.js";
 
@@ -17,6 +18,7 @@ bookingRouter.post("/check-availability", checkAvailabilityOfCar);
 bookingRouter.post("/create", protect, createBooking);
 bookingRouter.get("/user", protect, getUserBookings);
 bookingRouter.get("/owner", protect, getOwnerBookings);
+bookingRouter.get("/:bookingId", getBookingById); // ✅ New route for getting specific booking
 bookingRouter.post("/change-status", protect, changeBookingStatus); // ✅ error fixed!
 
 export default bookingRouter;

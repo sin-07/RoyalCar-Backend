@@ -167,6 +167,35 @@ export const getOwnerBookings = async (req, res) => {
   }
 };
 
+// ✅ Get specific booking by ID
+export const getBookingById = async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+
+    const booking = await Booking.findById(bookingId)
+      .populate("car user")
+      .select("-user.password");
+
+    if (!booking) {
+      return res.status(404).json({ 
+        success: false, 
+        message: "Booking not found" 
+      });
+    }
+
+    return res.json({ 
+      success: true, 
+      booking 
+    });
+  } catch (err) {
+    console.error("getBookingById error:", err);
+    return res.status(500).json({ 
+      success: false, 
+      message: "Server error: " + err.message 
+    });
+  }
+};
+
 // ✅ Export booking status changer
 
 export const changeBookingStatus = async (req, res) => {
