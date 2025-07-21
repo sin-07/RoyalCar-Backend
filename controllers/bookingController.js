@@ -72,19 +72,20 @@ export const createBooking = async (req, res) => {
 
     const durationMs = ret - pickup;
     const durationMins = durationMs / (1000 * 60);
-    const hoursToPickup = (pickup - now) / (1000 * 60 * 60);
 
-    if (hoursToPickup < 24) {
+    // Allow immediate bookings (remove 24-hour restriction)
+    if (pickup <= now) {
       return res.json({
         success: false,
-        message: "Pickup must be at least 24 hours from now.",
+        message: "Pickup time must be in the future.",
       });
     }
 
-    if (durationMins < 1440) {
+    // Allow shorter bookings (minimum 1 hour instead of 24 hours)
+    if (durationMins < 60) {
       return res.json({
         success: false,
-        message: "Booking must be at least 24 hours long.",
+        message: "Booking must be at least 1 hour long.",
       });
     }
 
@@ -108,8 +109,11 @@ export const createBooking = async (req, res) => {
 
     const carData = await Car.findById(car);
     const pricePerDay = carData.pricePerDay;
-    const durationDays = Math.ceil(durationMins / 1440);
-    const totalPrice = durationDays * pricePerDay;
+    
+    // Calculate price based on hours for more flexible pricing
+    const durationHours = Math.ceil(durationMins / 60);
+    const pricePerHour = pricePerDay / 24; // Convert daily rate to hourly
+    const totalPrice = Math.ceil(durationHours * pricePerHour);
 
     const booking = await Booking.create({
       user: req.user._id,
