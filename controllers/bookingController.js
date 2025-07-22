@@ -63,6 +63,9 @@ export const checkAvailabilityOfCar = async (req, res) => {
 
 // ✅ Create booking
 export const createBooking = async (req, res) => {
+  // Debug logging for troubleshooting
+  console.log("[createBooking] req.user:", req.user);
+  console.log("[createBooking] req.body:", req.body);
   try {
     const { pickupDateTime, returnDateTime, car } = req.body;
 
@@ -156,8 +159,7 @@ export const getOwnerBookings = async (req, res) => {
     }
 
     const bookings = await Booking.find({ owner: req.user._id })
-      .populate("car user")
-      .select("-user.password")
+      .populate("car")
       .sort({ createdAt: -1 });
 
     return res.json({ success: true, bookings });
@@ -171,22 +173,21 @@ export const getOwnerBookings = async (req, res) => {
 export const getBookingById = async (req, res) => {
   try {
     const { bookingId } = req.params;
+  try {
+    const { bookingId } = req.params;
 
     const booking = await Booking.findById(bookingId)
-      .populate("car user")
-      .select("-user.password");
+      .populate("car");
 
     if (!booking) {
-      return res.status(404).json({ 
-        success: false, 
-        message: "Booking not found" 
-      });
+      return res.json({ success: false, message: "Booking not found" });
     }
 
-    return res.json({ 
-      success: true, 
-      booking 
-    });
+    return res.json({ success: true, booking });
+  } catch (err) {
+    console.error("getBookingById error:", err);
+    return res.json({ success: false, message: err.message });
+  }
   } catch (err) {
     console.error("getBookingById error:", err);
     return res.status(500).json({ 

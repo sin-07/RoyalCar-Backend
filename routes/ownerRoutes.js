@@ -1,6 +1,7 @@
 import express from "express";
 import { protect } from "../middleware/auth.js";
 import { addCar, changeRoleToOwner, deleteCar, getDashboardData, getOwnerCars, toggleCarAvailability, updateUserImage } from "../controllers/ownerController.js";
+import { getOwnerCarBookings } from "../controllers/api_owner_car_bookings.js";
 import upload from "../middleware/multer.js";
 
 const ownerRouter = express.Router();
@@ -10,6 +11,9 @@ ownerRouter.post("/add-car", upload.single("image"), protect, addCar)
 ownerRouter.get("/cars", protect, getOwnerCars)
 ownerRouter.post("/toggle-car", protect, toggleCarAvailability)
 ownerRouter.post("/delete-car", protect, deleteCar)
+
+// New: Get all bookings for all cars owned by this owner
+ownerRouter.get("/car-bookings", protect, getOwnerCarBookings)
 
 ownerRouter.get('/dashboard', protect, getDashboardData)
 ownerRouter.post('/update-image', upload.single("image"), protect, updateUserImage)

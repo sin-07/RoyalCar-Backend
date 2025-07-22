@@ -4,7 +4,11 @@ const { ObjectId } = mongoose.Schema.Types;
 const bookingSchema = new mongoose.Schema(
   {
     car: { type: ObjectId, ref: "Car", required: true },
-    user: { type: ObjectId, ref: "User", required: true },
+    user: {
+        type: String,
+        ref: 'User',
+        required: true
+    },
     owner: { type: ObjectId, ref: "User", required: true },
 
     // ✅ DATE stored separately
