@@ -22,24 +22,37 @@ export const getOwnerCarBookings = async (req, res) => {
     const carBookings = await Promise.all(
       cars.map(async (car) => {
         const bookings = await Booking.find({ car: car._id, status: "confirmed" });
+        // Debug: Print car and booking info
+        console.log(`Car: ${car._id} (${car.brand} ${car.model})`);
+        bookings.forEach(b => {
+          console.log(`  Booking: ${b._id} | ${b.pickupDate} ${b.pickupTime} - ${b.returnDate} ${b.returnTime} | Status: ${b.status}`);
+        });
         // Find if car is currently booked
         let isBookedNow = false;
         let currentBooking = null;
         let nextAvailableAt = null;
         for (const b of bookings) {
-          const start = new Date(`${b.pickupDate}T${b.pickupTime}`);
-          const end = new Date(`${b.returnDate}T${b.returnTime}`);
-          if (now >= start && now <= end) {
+          // Normalize time to HH:MM:SS if needed
+          function normalizeTime(t) {
+            if (!t) return "00:00:00";
+            if (t.length === 5) return t + ":00"; // HH:MM -> HH:MM:00
+            return t;
+          }
+          const start = new Date(`${b.pickupDate}T${normalizeTime(b.pickupTime)}Z`);
+          const end = new Date(`${b.returnDate}T${normalizeTime(b.returnTime)}Z`);
+          console.log(`    Checking: now=${now.toISOString()} start=${start.toISOString()} end=${end.toISOString()}`);
+          if (now.getTime() >= start.getTime() && now.getTime() <= end.getTime()) {
             isBookedNow = true;
             currentBooking = b;
             nextAvailableAt = end;
             break;
           }
           // If not booked now, find the next available time
-          if (now < start && (!nextAvailableAt || start < nextAvailableAt)) {
+          if (now.getTime() < start.getTime() && (!nextAvailableAt || start.getTime() < nextAvailableAt.getTime())) {
             nextAvailableAt = start;
           }
         }
+        console.log(`  Result: isBookedNow=${isBookedNow}`);
         return {
           carId: car._id,
           isBookedNow,

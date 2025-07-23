@@ -127,7 +127,7 @@ export const createBooking = async (req, res) => {
       returnDate: returnDateTime.split("T")[0],
       returnTime: returnDateTime.split("T")[1],
       price: totalPrice,
-      status: "pending",
+      status: "confirmed",
     });
 
     return res.json({ success: true, bookingId: booking._id });
