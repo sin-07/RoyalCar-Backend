@@ -1,4 +1,64 @@
-// import imagekit from "../configs/imageKit.js";
+// --- DEBUG/HELPER: Get booking status for each car ---
+import mongoose from "mongoose";
+
+// Helper to get current booking status for a car
+export const getCarBookingStatus = async (car) => {
+  // Always check all bookings for this car, regardless of owner
+  const bookings = await Booking.find({ car: car._id });
+  // Find if any booking is active now
+  const now = new Date();
+  let isBookedNow = false;
+  let nextAvailableAt = null;
+  let currentBooking = null;
+  for (const b of bookings) {
+    const start = new Date(b.startDateTime);
+    const end = new Date(b.endDateTime);
+    if (now >= start && now <= end) {
+      isBookedNow = true;
+      nextAvailableAt = end;
+      currentBooking = b;
+      break;
+    }
+  }
+  // Debug log
+  console.log(`[BOOKING-DEBUG] Car: ${car._id} (${car.brand} ${car.model}) | Bookings: ${bookings.length} | isBookedNow: ${isBookedNow}`);
+  return {
+    carId: car._id,
+    isBookedNow,
+    nextAvailableAt,
+    currentBooking: currentBooking ? {
+      pickupDate: currentBooking.startDateTime,
+      returnDate: currentBooking.endDateTime,
+      user: currentBooking.name || currentBooking.email || "-",
+    } : null,
+  };
+};
+
+// --- API: Get booking status for all cars for owner (for debugging) ---
+export const getOwnerCarBookings = async (req, res) => {
+  try {
+    const { _id } = req.user;
+    let cars;
+    if (_id.toString().startsWith("admin_")) {
+      cars = await Car.find({});
+    } else {
+      cars = await Car.find({ owner: _id });
+    }
+    // For each car, get booking status
+    const carBookings = [];
+    for (const car of cars) {
+      const status = await getCarBookingStatus(car);
+      carBookings.push(status);
+    }
+    // Debug log
+    console.log(`[BOOKING-DEBUG] getOwnerCarBookings: Returning status for ${carBookings.length} cars`);
+    res.json({ success: true, carBookings });
+  } catch (error) {
+    console.log(error.message);
+    res.json({ success: false, message: error.message });
+  }
+};
+import imagekit from "../configs/imageKit.js";
 import Booking from "../models/Booking.js";
 import Car from "../models/Car.js";
 import User from "../models/User.js";

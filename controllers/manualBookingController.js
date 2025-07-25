@@ -10,17 +10,21 @@ export const createManualBooking = async (req, res) => {
     if (!carId || !startDateTime || !endDateTime || !name || !email) {
       return res.json({ success: false, message: "Missing required fields." });
     }
+
     const car = await Car.findById(carId);
     if (!car) return res.json({ success: false, message: "Car not found." });
 
-    // Check for conflicts with existing confirmed bookings
-    const pickup = new Date(startDateTime);
-    const ret = new Date(endDateTime);
+    // Always store ISO datetime for status logic
+    const pickupISO = new Date(startDateTime).toISOString();
+    const returnISO = new Date(endDateTime).toISOString();
+
+    // Check for conflicts with existing confirmed bookings (using ISO datetimes)
     const existing = await Booking.find({ car: carId, status: "confirmed" });
     const isConflict = existing.some((b) => {
-      const bStart = new Date(`${b.pickupDate}T${b.pickupTime}`);
-      const bEnd = new Date(`${b.returnDate}T${b.returnTime}`);
-      return pickup < bEnd && ret > bStart;
+      // Try to use ISO datetimes if present, else fallback to old fields
+      const bStart = b.startDateTime ? new Date(b.startDateTime) : new Date(`${b.pickupDate}T${b.pickupTime}`);
+      const bEnd = b.endDateTime ? new Date(b.endDateTime) : new Date(`${b.returnDate}T${b.returnTime}`);
+      return new Date(pickupISO) < bEnd && new Date(returnISO) > bStart;
     });
     if (isConflict) {
       return res.json({ success: false, message: "Car is already booked during this time." });
@@ -45,11 +49,17 @@ export const createManualBooking = async (req, res) => {
       pickupTime: startDateTime.split("T")[1],
       returnDate: endDateTime.split("T")[0],
       returnTime: endDateTime.split("T")[1],
+      startDateTime: pickupISO,
+      endDateTime: returnISO,
       price: typeof payment === 'number' ? payment : 0,
       status: "confirmed",
       firstName: name,
       email: email,
     });
+
+    // Debug: Log booking and owner after creation
+    console.log('[ManualBooking] Created booking:', booking);
+    console.log('[ManualBooking] Booking owner:', car.owner, 'Car:', carId);
 
     // Send professional receipt email with PDF invoice
     try {

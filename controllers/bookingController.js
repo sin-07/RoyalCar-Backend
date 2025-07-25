@@ -130,6 +130,14 @@ export const createBooking = async (req, res) => {
       status: "confirmed",
     });
 
+    // Debug: Print types and values for linkage troubleshooting
+    console.log('[createBooking] Booking created:', booking);
+    console.log('[createBooking] booking.car:', booking.car, 'Type:', typeof booking.car);
+    console.log('[createBooking] booking.owner:', booking.owner, 'Type:', typeof booking.owner);
+    console.log('[createBooking] carData._id:', carData._id, 'Type:', typeof carData._id);
+    console.log('[createBooking] carData.owner:', carData.owner, 'Type:', typeof carData.owner);
+    console.log('[createBooking] req.user._id:', req.user._id, 'Type:', typeof req.user._id);
+
     return res.json({ success: true, bookingId: booking._id });
   } catch (err) {
     console.error("createBooking error:", err);
