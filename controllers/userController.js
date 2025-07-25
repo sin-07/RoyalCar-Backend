@@ -119,13 +119,18 @@ export const testEmail = async (req, res) => {
 export const sendOtp = async (req, res) => {
   try {
     const { email } = req.body;
+    console.log("sendOtp called with email:", email);
+    console.log("MAIL_USER:", process.env.MAIL_USER);
+    console.log("MAIL_PASS exists:", !!process.env.MAIL_PASS);
 
     if (!email) {
+      console.log("No email provided to sendOtp");
       return res.json({ success: false, message: "Email is required" });
     }
 
     // Check if email environment variables are set
     if (!process.env.MAIL_USER || !process.env.MAIL_PASS) {
+      console.log("Email service not configured. MAIL_USER or MAIL_PASS missing.");
       return res.json({
         success: false,
         message: "Email service not configured",
@@ -135,6 +140,7 @@ export const sendOtp = async (req, res) => {
     // Check if user already exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
+      console.log("User already exists with this email:", email);
       return res.json({
         success: false,
         message: "User already exists with this email",
